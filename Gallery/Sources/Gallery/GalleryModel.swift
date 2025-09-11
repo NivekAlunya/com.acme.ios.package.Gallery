@@ -47,11 +47,6 @@ public class GalleryModel: ObservableObject {
     
     public init(gallery: any GalleryProtocol = Gallery.shared) {
         self.gallery = gallery
-        gallery.setOnLibraryChange { [weak self] in
-            Task {
-                await self?.loadPhotos()
-            }
-        }
     }
     
     func syncPhotos(selectedPhotos: [PhotoItem]) {
@@ -71,7 +66,9 @@ public class GalleryModel: ObservableObject {
             
             var loadedPhotos: [PhotoItem] = []
             for asset in assets {
-                if let image = await gallery.loadThumbnail(from: asset, targetSize: CGSize(width: 200, height: 200)) {
+                
+                do {
+                    let image = await try gallery.loadThumbnail(from: asset, targetSize: CGSize(width: 200, height: 200))
                     let photoItem = PhotoItem(
                         id: asset.localIdentifier,
                         image: nil,
@@ -79,6 +76,9 @@ public class GalleryModel: ObservableObject {
                         asset: asset
                     )
                     loadedPhotos.append(photoItem)
+                } catch {
+                    print("Error loading thumbnail for asset \(asset.localIdentifier): \(error)")
+                    continue
                 }
             }
             photos = loadedPhotos
@@ -96,7 +96,11 @@ public class GalleryModel: ObservableObject {
         print("Photo at index \(index) is now \(photos[index].isSelected ? "selected" : "deselected")")
     }
     
-    func showImageAtIndex(_ index: Int, _ completion: (() -> Void)? = nil) {
+    func showImageAtIndex(_ index: Int) async {
+        guard !photos.isEmpty else {
+            print("No photos available to display.")
+            return
+        }
         currentIndex = switch index {
         case ..<0:
             photos.count - 1
@@ -105,29 +109,32 @@ public class GalleryModel: ObservableObject {
         default:
             index
         }
-        
-        let delayedLoader = Task {
+
+        photo = self.photos[index]
+        let delayedLoader = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 500_000_000) // 2 seconds
                 // Check if cancelled before doing work
                 try Task.checkCancellation()
                 
                 await MainActor.run {
-                    self.isImageLoading = true
+                    self?.isImageLoading = true
                 }
             } catch {
                 print("Task was cancelled")
             }
         }
         
-        gallery.loadImage(from: photos[index].asset) { [weak self] uiImage in
-            self?.photo = self?.photos[index]
-            self?.photo?.image = uiImage
-            self?.showImage()
+        do {
+            let image = try await gallery.loadImage(from: photo!.asset)
+            photo?.image = image
+            showImage()
             delayedLoader.cancel()
-            self?.isImageLoading = false
-            completion?()
+            isImageLoading = false
+        } catch {
+            print("Error loading full image: \(error)")
         }
+    
     }
     func hideImage() {
         photo = nil
@@ -140,12 +147,12 @@ public class GalleryModel: ObservableObject {
         state = .displaying
     }
     
-    func showNextImage(_ completion: (() -> Void)? = nil) {
-        showImageAtIndex(currentIndex + 1, completion)
+    func showNextImage() async {
+        await showImageAtIndex(currentIndex + 1)
     }
     
-    func showPreviousImage(_ completion: (() -> Void)? = nil) {
-        showImageAtIndex(currentIndex - 1, completion)
+    func showPreviousImage() async {
+        await showImageAtIndex(currentIndex - 1)
     }
     
     func showGallery() {

@@ -43,7 +43,9 @@ public struct GalleryView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
                             ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
                                 ThumbnailView(isSelected: photo.isSelected ,photo: photo, onTap: {
-                                    model.showImageAtIndex(index)
+                                    Task {
+                                        await model.showImageAtIndex(index)
+                                    }
                                 }, onLongPress: { isSelected in
                                     model.selectPhotoAtIndex(index, selected: isSelected)
                                 })
