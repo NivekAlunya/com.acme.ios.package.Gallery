@@ -47,6 +47,11 @@ public class GalleryModel: ObservableObject {
     
     public init(gallery: any GalleryProtocol = Gallery.shared) {
         self.gallery = gallery
+        gallery.setOnLibraryChange { [weak self] in
+            Task {
+                await self?.loadPhotos()
+            }
+        }
     }
     
     func syncPhotos(selectedPhotos: [PhotoItem]) {
@@ -64,19 +69,22 @@ public class GalleryModel: ObservableObject {
             
             let assets = try await gallery.getPhotos()
             
-            photos = assets.compactMap { asset in
-                if let image = gallery.loadThumbnail(from: asset, targetSize: CGSize(width: 200, height: 200)) {
-                    return PhotoItem(
-                        id: asset.localIdentifier
-                        , image: nil
-                        , thumb: image
-                        , asset: asset)
-                } else {
-                    return nil
+            var loadedPhotos: [PhotoItem] = []
+            for asset in assets {
+                if let image = await gallery.loadThumbnail(from: asset, targetSize: CGSize(width: 200, height: 200)) {
+                    let photoItem = PhotoItem(
+                        id: asset.localIdentifier,
+                        image: nil,
+                        thumb: image,
+                        asset: asset
+                    )
+                    loadedPhotos.append(photoItem)
                 }
             }
+            photos = loadedPhotos
             state = .loaded
         } catch {
+            state = .error(error)
             print("Error loading photos: \(error)")
         }
     }

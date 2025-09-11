@@ -15,7 +15,6 @@ extension EnvironmentValues {
 public struct GalleryView: View {
     private let bundle: Bundle
     @StateObject private var model: GalleryModel
-    @State private var swipeOffset = 0
     @Binding var selectedPhotos: [PhotoItem]
     
     public init(bundle: Bundle? = nil, selectedPhotos: Binding<[PhotoItem]> = .constant([])) {

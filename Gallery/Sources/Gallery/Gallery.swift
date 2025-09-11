@@ -8,8 +8,8 @@ public protocol GalleryProtocol: Actor {
     func insertPhoto(data: Data) async throws
     func getPhotos() async throws -> [PHAsset]
     nonisolated func loadImage(from asset: PHAsset, callback: ((UIImage?) -> Void)?)
-    nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) -> UIImage?
-
+    nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) async -> UIImage?
+    func setOnLibraryChange(_ onChange: (() -> Void)?)
 }
 
 public actor Gallery: NSObject {
@@ -29,6 +29,7 @@ public actor Gallery: NSObject {
     public static let shared = Gallery()
     private(set) var state: State = .unknown
     private let imageManager = PHImageManager.default()
+    private var onLibraryChange: (() -> Void)?
     
     private override init() {
         super.init()
@@ -81,6 +82,9 @@ public actor Gallery: NSObject {
 }
 
 extension Gallery: GalleryProtocol {
+    public func setOnLibraryChange(_ onChange: (() -> Void)?) {
+        self.onLibraryChange = onChange
+    }
 
     public func getPhotos() async throws -> [PHAsset] {
         guard await askForPermission() else {
@@ -111,15 +115,11 @@ extension Gallery: GalleryProtocol {
         }
     }
 
-    nonisolated public func loadThumbnail(from asset: PHAsset, targetSize: CGSize = CGSize(width: 200, height: 200)) -> UIImage? {
+    nonisolated public func loadThumbnail(from asset: PHAsset, targetSize: CGSize = CGSize(width: 200, height: 200)) async -> UIImage? {
         let options = PHImageRequestOptions()
-        options.isSynchronous = true
         options.deliveryMode = .highQualityFormat
-        var uiImage: UIImage?
-        imageManager.requestImage(for: asset, targetSize: CGSize(width: 200, height: 200), contentMode: .aspectFill, options: options) { image, _ in
-            uiImage = image
-        }
-        return uiImage
+        let result = await imageManager.requestImage(for: asset, targetSize: CGSize(width: 200, height: 200), contentMode: .aspectFill, options: options)
+        return result.0
     }
     
     nonisolated public func loadImage(from asset: PHAsset, callback: ((UIImage?) -> Void)?) {
@@ -144,7 +144,12 @@ extension Gallery: GalleryProtocol {
 
 extension Gallery: PHPhotoLibraryChangeObserver {
     nonisolated public func photoLibraryDidChange(_ changeInstance: PHChange) {
-        // Handle changes to the photo library here
-        print("Photo library changed changeInstance: \(changeInstance)" )
+        Task {
+            await (self as! Gallery).handleLibraryChange()
+        }
+    }
+
+    func handleLibraryChange() {
+        onLibraryChange?()
     }
 }
