@@ -7,9 +7,8 @@ import UIKit
 public protocol GalleryProtocol: Actor {
     func insertPhoto(data: Data) async throws
     func getPhotos() async throws -> [PHAsset]
-    nonisolated func loadImage(from asset: PHAsset, callback: ((UIImage?) -> Void)?)
-    nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) -> UIImage?
-
+    nonisolated func loadImage(from asset: PHAsset) async throws -> UIImage
+    nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) async throws -> UIImage
 }
 
 public actor Gallery: NSObject {
@@ -24,11 +23,14 @@ public actor Gallery: NSObject {
     enum GalleryError: Error {
         case permissionDenied
         case insertionFailed
+        case loadingThumbnailFailed
+        case loadingImageFailed
     }
     
     public static let shared = Gallery()
     private(set) var state: State = .unknown
     private let imageManager = PHImageManager.default()
+    private var onLibraryChange: (() -> Void)?
     
     private override init() {
         super.init()
@@ -81,6 +83,7 @@ public actor Gallery: NSObject {
 }
 
 extension Gallery: GalleryProtocol {
+    
 
     public func getPhotos() async throws -> [PHAsset] {
         guard await askForPermission() else {
@@ -111,40 +114,55 @@ extension Gallery: GalleryProtocol {
         }
     }
 
-    nonisolated public func loadThumbnail(from asset: PHAsset, targetSize: CGSize = CGSize(width: 200, height: 200)) -> UIImage? {
-        let options = PHImageRequestOptions()
-        options.isSynchronous = true
-        options.deliveryMode = .highQualityFormat
-        var uiImage: UIImage?
-        imageManager.requestImage(for: asset, targetSize: CGSize(width: 200, height: 200), contentMode: .aspectFill, options: options) { image, _ in
-            uiImage = image
+    nonisolated public func loadThumbnail(from asset: PHAsset, targetSize: CGSize = CGSize(width: 200, height: 200)) async throws -> UIImage {
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isSynchronous = false
+            options.isNetworkAccessAllowed = true
+            print("loadThumbnail from asset \(asset.localIdentifier)")
+            imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, info in
+                print("thumbnail for \(asset.localIdentifier) \(image != nil)")
+                guard let image else  {
+                    continuation.resume(throwing: GalleryError.loadingThumbnailFailed)
+                    return
+                }
+                continuation.resume(returning: image)
+                print("loadThumbnail from asset \(asset.localIdentifier) ended function")
+            }
+            
         }
-        return uiImage
     }
     
-    nonisolated public func loadImage(from asset: PHAsset, callback: ((UIImage?) -> Void)?) {
-        let options = PHImageRequestOptions()
-        options.isSynchronous = false
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-        var uiImage: UIImage?
-        print("loadImage from asset \(asset.localIdentifier)")
-        imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-            print("data for \(asset.localIdentifier) \(data != nil)")
-            if let data {
-                    uiImage = UIImage(data: data)
-            }
-            callback?(uiImage)
+    nonisolated public func loadImage(from asset: PHAsset) async throws -> UIImage {
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            
+            let options = PHImageRequestOptions()
+            options.isSynchronous = false
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            var uiImage: UIImage?
             print("loadImage from asset \(asset.localIdentifier)")
+            imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                    guard let data
+                    , let uiImage = UIImage(data: data) else  {
+                        continuation.resume(throwing: GalleryError.loadingImageFailed)
+                        return
+                    }
+                    print("data for \(asset.localIdentifier) \(data != nil)")
+                    continuation.resume(returning: uiImage)
+                    print("loadImage from asset \(asset.localIdentifier)")
+            }
         }
-        print("loadImage from asset \(asset.localIdentifier) ended function")
     }
         
 }
 
 extension Gallery: PHPhotoLibraryChangeObserver {
     nonisolated public func photoLibraryDidChange(_ changeInstance: PHChange) {
-        // Handle changes to the photo library here
-        print("Photo library changed changeInstance: \(changeInstance)" )
+        print("Photo library did change")
     }
+
 }

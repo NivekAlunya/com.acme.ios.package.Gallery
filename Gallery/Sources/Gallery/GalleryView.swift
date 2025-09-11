@@ -15,7 +15,6 @@ extension EnvironmentValues {
 public struct GalleryView: View {
     private let bundle: Bundle
     @StateObject private var model: GalleryModel
-    @State private var swipeOffset = 0
     @Binding var selectedPhotos: [PhotoItem]
     
     public init(bundle: Bundle? = nil, selectedPhotos: Binding<[PhotoItem]> = .constant([])) {
@@ -44,7 +43,9 @@ public struct GalleryView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
                             ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
                                 ThumbnailView(isSelected: photo.isSelected ,photo: photo, onTap: {
-                                    model.showImageAtIndex(index)
+                                    Task {
+                                        await model.showImageAtIndex(index)
+                                    }
                                 }, onLongPress: { isSelected in
                                     model.selectPhotoAtIndex(index, selected: isSelected)
                                 })

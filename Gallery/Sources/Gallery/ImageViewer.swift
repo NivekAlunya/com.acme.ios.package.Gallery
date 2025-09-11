@@ -27,7 +27,8 @@ struct ImageViewer: View {
                             } completion: {
                                 dragOffset = viewSize.width
                                 withAnimation {
-                                    model.showNextImage {
+                                    Task {
+                                        await model.showNextImage()
                                         withAnimation {
                                             dragOffset = 0
                                         }
@@ -41,10 +42,12 @@ struct ImageViewer: View {
                             } completion: {
                                 dragOffset = -viewSize.width
                                 withAnimation {
-                                    model.showPreviousImage {
+                                    Task {
+                                        await model.showPreviousImage()
                                         withAnimation {
                                             dragOffset = 0
                                         }
+
                                     }
                                 }
                             }
