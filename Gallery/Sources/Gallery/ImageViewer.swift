@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ImageViewer: View {
-    @ObservedObject var model: GalleryModel
+    let model: GalleryModel
     @State private var dragOffset = CGFloat(0)
     @State private var viewSize: CGSize = .zero
     @State private var isDragging = false
@@ -52,9 +52,8 @@ struct ImageViewer: View {
                                 }
                             }
                         })
-                    
                     .overlay {
-                        if model.isImageLoading {
+                        if model.photo?.isLoading == true {
                             ProgressView("Loading Image...")
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 .scaleEffect(1.5)
