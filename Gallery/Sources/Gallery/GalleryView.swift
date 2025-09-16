@@ -14,18 +14,18 @@ extension EnvironmentValues {
 
 public struct GalleryView: View {
     private let bundle: Bundle
-    @StateObject private var model: GalleryModel
+    private let model: GalleryModel
     @Binding var selectedPhotos: [PhotoItem]
     
     public init(bundle: Bundle? = nil, selectedPhotos: Binding<[PhotoItem]> = .constant([])) {
         self._selectedPhotos = selectedPhotos
         let resolvedBundle = bundle ?? Bundle.module
         self.bundle = resolvedBundle
-        _model = StateObject(wrappedValue: GalleryModel())
+        self.model = GalleryModel()
     }
 
     init(model: GalleryModel) {
-        _model = StateObject(wrappedValue: model)
+        self.model = model
         self.bundle = .module
         self._selectedPhotos = .constant([])
     }
@@ -35,6 +35,10 @@ public struct GalleryView: View {
                 switch model.state {
                 case .loading:
                     ProgressView("Loading Photos...")
+                        .task {
+                            await model.loadPhotos()
+                        }
+
                 case .error(let error):
                     Text("Error loading photos: \(error.localizedDescription)")
                         .foregroundColor(.red)
@@ -42,12 +46,14 @@ public struct GalleryView: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
                             ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
-                                ThumbnailView(isSelected: photo.isSelected ,photo: photo, onTap: {
+                                ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: {
                                     Task {
                                         await model.showImageAtIndex(index)
                                     }
                                 }, onLongPress: { isSelected in
-                                    model.selectPhotoAtIndex(index, selected: isSelected)
+                                    Task {
+                                        await model.selectPhotoAtIndex(index, selected: isSelected)
+                                    }
                                 })
                                 .animation(.default, value: model.photos[index].isSelected)
                                 .transition(.opacity.combined(with: .scale))
@@ -63,9 +69,7 @@ public struct GalleryView: View {
                 
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            await model.loadPhotos()
-        }
+        .clipped()
         .environment(\.bundle, bundle)
         .onChange(of: model.photos) { newPhotos in
             selectedPhotos = newPhotos.filter { $0.isSelected }
@@ -78,37 +82,7 @@ public struct GalleryView: View {
     }
 }
 
-struct ThumbnailView: View {
-    let isSelected: Bool
-    let photo: PhotoItem
-    let onTap: () -> Void
-    let onLongPress: (Bool) -> Void
-    
-    var body: some View {
-        
-        Image(uiImage: photo.thumb)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 8)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(alignment: .topTrailing) {
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Color.accentColor)
-                        .padding(6)
-                }
-            }
-            .onTapGesture(perform: onTap)
-            .onLongPressGesture {
-                onLongPress(!isSelected)
-                print("ThumbnailView: photo id: \(photo.id), isSelected: \(isSelected)")
-            }
-            .scaleEffect(isSelected ? 0.95 : 1.0)
-    }
-}
+
 
 #Preview {
     GalleryView(model: GalleryModel())

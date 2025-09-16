@@ -15,10 +15,12 @@ public struct PhotoItem: Identifiable, Hashable {
     public let thumb: UIImage
     let asset: PHAsset
     var isSelected: Bool = false
+    var isLoading: Bool = false
 }
 
 @MainActor
-public class GalleryModel: ObservableObject {
+@Observable
+class GalleryModel {
     
     enum State: Equatable {
         static func == (lhs: GalleryModel.State, rhs: GalleryModel.State) -> Bool {
@@ -40,10 +42,9 @@ public class GalleryModel: ObservableObject {
     private let gallery: any GalleryProtocol
     private var currentIndex: Int = 0
     
-    @Published private(set) var photos: [PhotoItem] = []
-    @Published private(set) var photo: PhotoItem? = nil
-    @Published private(set) var state: State = .loading
-    @Published private(set) var isImageLoading = false
+    private(set) var photos: [PhotoItem] = []
+    private(set) var photo: PhotoItem? = nil
+    private(set) var state: State = .loading
     
     public init(gallery: any GalleryProtocol = Gallery.shared) {
         self.gallery = gallery
@@ -89,10 +90,17 @@ public class GalleryModel: ObservableObject {
         }
     }
     
-    func selectPhotoAtIndex(_ index: Int, selected isSelected: Bool) {
-        //var photo = photos[index]
-        photos[index].isSelected = isSelected
-        //photos[index] = photo
+    func selectPhotoAtIndex(_ index: Int, selected isSelected: Bool) async {
+        do {
+            if photos[index].image == nil {
+                photos[index].isLoading = true
+                photos[index].image = try await gallery.loadImage(from: photos[index].asset)
+            }
+            photos[index].isLoading = false
+            photos[index].isSelected = isSelected
+        } catch {
+            print("Error updating photo selection at index \(index): \(error)")
+        }
         print("Photo at index \(index) is now \(photos[index].isSelected ? "selected" : "deselected")")
     }
     
@@ -118,7 +126,7 @@ public class GalleryModel: ObservableObject {
                 try Task.checkCancellation()
                 
                 await MainActor.run {
-                    self?.isImageLoading = true
+                    self?.photo?.isLoading = true
                 }
             } catch {
                 print("Task was cancelled")
@@ -130,7 +138,7 @@ public class GalleryModel: ObservableObject {
             photo?.image = image
             showImage()
             delayedLoader.cancel()
-            isImageLoading = false
+            photo?.isLoading = false
         } catch {
             print("Error loading full image: \(error)")
         }
