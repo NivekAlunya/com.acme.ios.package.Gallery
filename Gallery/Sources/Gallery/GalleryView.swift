@@ -14,7 +14,7 @@ extension EnvironmentValues {
 
 public struct GalleryView: View {
     private let bundle: Bundle
-    private let model: GalleryModel
+    @State var model: GalleryModel
     @Binding var selectedPhotos: [PhotoItem]
     
     public init(bundle: Bundle? = nil, selectedPhotos: Binding<[PhotoItem]> = .constant([])) {
