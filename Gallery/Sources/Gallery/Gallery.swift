@@ -30,11 +30,15 @@ public actor Gallery: NSObject {
     public static let shared = Gallery()
     private(set) var state: State = .unknown
     private let imageManager = PHImageManager.default()
+    private let cachingManager = PHCachingImageManager()
     private var onLibraryChange: (() -> Void)?
     private var cachedAssets: [PHAsset] = []
+    private let targetSize = CGSize(width: 200, height: 200)
     private override init() {
         super.init()
         PHPhotoLibrary.shared().register(self)
+        cachingManager.startCachingImages(for: cachedAssets, targetSize: targetSize, contentMode: .aspectFill, options: nil)
+    
     }
     
     deinit {

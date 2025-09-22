@@ -45,7 +45,8 @@ class GalleryModel {
     private(set) var photos: [PhotoItem] = []
     private(set) var photo: PhotoItem? = nil
     private(set) var state: State = .loading
-    
+    private let blockSize = 10
+
     public init(gallery: any GalleryProtocol = Gallery.shared) {
         self.gallery = gallery
     }
@@ -67,7 +68,6 @@ class GalleryModel {
             
             var loadedPhotos: [PhotoItem] = []
             for asset in assets {
-                
                 do {
                     let image = await try gallery.loadThumbnail(from: asset, targetSize: CGSize(width: 200, height: 200))
                     let photoItem = PhotoItem(
@@ -81,9 +81,21 @@ class GalleryModel {
                     print("Error loading thumbnail for asset \(asset.localIdentifier): \(error)")
                     continue
                 }
+                
+                if loadedPhotos.count % blockSize == 0 {
+                    photos.append(contentsOf: loadedPhotos)
+                    state = .loaded
+                    loadedPhotos.removeAll()
+                    // Yield to the main thread to update UI
+                    await Task.yield()
+                }
+                
             }
-            photos = loadedPhotos
-            state = .loaded
+            
+            if !loadedPhotos.isEmpty {
+                photos.append(contentsOf: loadedPhotos)
+                state = .loaded
+            }
         } catch {
             state = .error(error)
             print("Error loading photos: \(error)")
