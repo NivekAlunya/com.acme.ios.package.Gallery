@@ -25,8 +25,10 @@ class GalleryModel {
     enum State: Equatable {
         static func == (lhs: GalleryModel.State, rhs: GalleryModel.State) -> Bool {
             switch (lhs, rhs) {
-            case (.loading, .loading), (.loaded, .loaded), (.displaying, .displaying):
+            case (.loading, .loading), (.browsing, .browsing):
                 return true
+                case (.displaying(let leftIsLoading), .displaying(let rightIsLoading)):
+                return leftIsLoading == rightIsLoading
             case (.error(let e1), .error(let e2)):
                 return e1.localizedDescription == e2.localizedDescription
             default:
@@ -34,8 +36,8 @@ class GalleryModel {
             }
         }
         case loading
-        case loaded
-        case displaying
+        case browsing
+        case displaying(isLoading: Bool)
         case error(Error)
     }
     
@@ -65,8 +67,9 @@ class GalleryModel {
         do {
             
             let assets = try await gallery.getPhotos()
-            
             var loadedPhotos: [PhotoItem] = []
+            state = .browsing
+
             for asset in assets {
                 do {
                     let image = await try gallery.loadThumbnail(from: asset, targetSize: CGSize(width: 200, height: 200))
@@ -84,7 +87,6 @@ class GalleryModel {
                 
                 if loadedPhotos.count % blockSize == 0 {
                     photos.append(contentsOf: loadedPhotos)
-                    state = .loaded
                     loadedPhotos.removeAll()
                     // Yield to the main thread to update UI
                     await Task.yield()
@@ -94,7 +96,6 @@ class GalleryModel {
             
             if !loadedPhotos.isEmpty {
                 photos.append(contentsOf: loadedPhotos)
-                state = .loaded
             }
         } catch {
             state = .error(error)
@@ -138,6 +139,7 @@ class GalleryModel {
                 try Task.checkCancellation()
                 
                 await MainActor.run {
+                    self?.state = .displaying(isLoading: true)
                     self?.photo?.isLoading = true
                 }
             } catch {
@@ -147,9 +149,9 @@ class GalleryModel {
         
         do {
             let image = try await gallery.loadImage(from: photo!.asset)
-            photo?.image = image
-            showImage()
             delayedLoader.cancel()
+            photo?.image = image
+            state = .displaying(isLoading: false)
             photo?.isLoading = false
         } catch {
             print("Error loading full image: \(error)")
@@ -159,14 +161,7 @@ class GalleryModel {
     func hideImage() {
         photo = nil
     }
-    
-    func showImage() {
-        guard state != .displaying else {
-            return
-        }
-        state = .displaying
-    }
-    
+        
     func showNextImage() async {
         await showImageAtIndex(currentIndex + 1)
     }
@@ -176,7 +171,7 @@ class GalleryModel {
     }
     
     func showGallery() {
-        state = .loaded
+        state = .browsing
         photo = nil
     }
 }
