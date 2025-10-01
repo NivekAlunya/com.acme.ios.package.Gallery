@@ -52,13 +52,7 @@ struct ImageViewer: View {
                                 }
                             }
                         })
-                    .overlay {
-                        if model.photo?.isLoading == true {
-                            ProgressView("Loading Image...")
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(1.5)
-                        }
-                    }
+
             } else {
                 EmptyView()
             }

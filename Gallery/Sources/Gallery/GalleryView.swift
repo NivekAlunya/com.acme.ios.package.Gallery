@@ -14,7 +14,7 @@ extension EnvironmentValues {
 
 public struct GalleryView: View {
     private let bundle: Bundle
-    private let model: GalleryModel
+    @State var model: GalleryModel
     @Binding var selectedPhotos: [PhotoItem]
     
     public init(bundle: Bundle? = nil, selectedPhotos: Binding<[PhotoItem]> = .constant([])) {
@@ -32,6 +32,24 @@ public struct GalleryView: View {
     
     public var body: some View {
             ZStack {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
+                        ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
+                            ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: {
+                                Task {
+                                    await model.showImageAtIndex(index)
+                                }
+                            }, onLongPress: { isSelected in
+                                Task {
+                                    await model.selectPhotoAtIndex(index, selected: isSelected)
+                                }
+                            })
+                            .animation(.default, value: model.photos[index].isSelected)
+                            .transition(.opacity.combined(with: .scale))
+                        }
+                    }
+                }
+
                 switch model.state {
                 case .loading:
                     ProgressView("Loading Photos...")
@@ -42,29 +60,22 @@ public struct GalleryView: View {
                 case .error(let error):
                     Text("Error loading photos: \(error.localizedDescription)")
                         .foregroundColor(.red)
-                case .loaded, .displaying:
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
-                            ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
-                                ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: {
-                                    Task {
-                                        await model.showImageAtIndex(index)
-                                    }
-                                }, onLongPress: { isSelected in
-                                    Task {
-                                        await model.selectPhotoAtIndex(index, selected: isSelected)
-                                    }
-                                })
-                                .animation(.default, value: model.photos[index].isSelected)
-                                .transition(.opacity.combined(with: .scale))
-                            }
-                        }
-                    }
-                    if model.state == .displaying {
+                case .displaying:
+                    if case let .displaying(isLoading) = model.state {
                         ImageViewer(model: model)
                             .transition(.opacity.combined(with: .scale))
                             .ignoresSafeArea()
+                            .overlay {
+                                if isLoading {
+                                    ProgressView("Loading Image...")
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(1.5)
+                                }
+                            }
+                            
                     }
+                case .browsing:
+                    EmptyView()
                 }
                 
         }
