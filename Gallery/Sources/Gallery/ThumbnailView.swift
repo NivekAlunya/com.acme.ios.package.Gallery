@@ -10,8 +10,8 @@ struct ThumbnailView: View {
     let isSelected: Bool
     let isLoading: Bool
     let photo: PhotoItem
-    let onTap: () -> Void
-    let onLongPress: (Bool) -> Void
+    let onTap: (Bool) -> Void
+    let onLongPress: () -> Void
     
     var body: some View {
         
@@ -38,11 +38,11 @@ struct ThumbnailView: View {
                         .padding(6)
                 }
             }
-            .onTapGesture(perform: onTap)
-            .onLongPressGesture {
-                onLongPress(!isSelected)
+            .onTapGesture {
+                onTap(!isSelected)
                 print("ThumbnailView: photo id: \(photo.id), isSelected: \(isSelected)")
             }
+            .onLongPressGesture(perform: onLongPress)
             .scaleEffect(isSelected ? 0.95 : 1.0)
     }
 }

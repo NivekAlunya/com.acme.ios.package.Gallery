@@ -35,13 +35,14 @@ public struct GalleryView: View {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
                         ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
-                            ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: {
-                                Task {
-                                    await model.showImageAtIndex(index)
-                                }
-                            }, onLongPress: { isSelected in
+                            ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: { isSelected in
                                 Task {
                                     await model.selectPhotoAtIndex(index, selected: isSelected)
+                                }
+                                
+                            }, onLongPress: {
+                                Task {
+                                    await model.showImageAtIndex(index)
                                 }
                             })
                             .animation(.default, value: model.photos[index].isSelected)
