@@ -40,7 +40,6 @@ struct ThumbnailView: View {
             }
             .onTapGesture {
                 onTap(!isSelected)
-                print("ThumbnailView: photo id: \(photo.id), isSelected: \(isSelected)")
             }
             .onLongPressGesture(perform: onLongPress)
             .scaleEffect(isSelected ? 0.95 : 1.0)
