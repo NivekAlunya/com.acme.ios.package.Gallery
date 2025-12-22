@@ -31,7 +31,6 @@ public struct GalleryView: View {
     }
     
     public var body: some View {
-            ZStack {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
                         ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
@@ -50,6 +49,17 @@ public struct GalleryView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environment(\.bundle, bundle)
+                .onChange(of: model.photos) { newPhotos in
+                    selectedPhotos = newPhotos.filter { $0.isSelected }
+                    print("GalleryView: selectedPhotos count: \(selectedPhotos.count)")
+                }
+                .onChange(of: selectedPhotos) { newPhotos in
+                    print("GalleryView: selectedPhotos changed externally, count: \(newPhotos.count)")
+                    model.syncPhotos(selectedPhotos: newPhotos)
+                }
+
 
                 switch model.state {
                 case .loading:
@@ -78,19 +88,6 @@ public struct GalleryView: View {
                 case .browsing:
                     EmptyView()
                 }
-                
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .environment(\.bundle, bundle)
-        .onChange(of: model.photos) { newPhotos in
-            selectedPhotos = newPhotos.filter { $0.isSelected }
-            print("GalleryView: selectedPhotos count: \(selectedPhotos.count)")
-        }
-        .onChange(of: selectedPhotos) { newPhotos in
-            print("GalleryView: selectedPhotos changed externally, count: \(newPhotos.count)")
-            model.syncPhotos(selectedPhotos: newPhotos)
-        }
     }
 }
 
