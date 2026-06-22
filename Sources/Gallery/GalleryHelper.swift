@@ -11,12 +11,14 @@ import Foundation
 public class GalleryHelper {
 
     /// A helper function to create a localized string from a string key.
-    /// This simplifies the process of localizing strings from the package's `.xcstrings` file.
-    /// It checks the host application's bundle first, then falls back to the package's module bundle.
+    ///
+    /// This method prioritizes the provided bundle (usually the host application) and falls back
+    /// to the package's internal module bundle if the translation is missing.
+    ///
     /// - Parameters:
     ///   - string: The key for the localized string.
-    ///   - bundle: The bundle where the `Gallery.xcstrings` file is expected to be found (usually provided by the environment).
-    /// - Returns: A localized string.
+    ///   - bundle: The primary bundle to search for the translation.
+    /// - Returns: The localized string if found, otherwise the key itself.
     public static func stringFrom(_ string: String, bundle: Bundle) -> String {
         let requestedStr = String(localized: String.LocalizationValue(string), table: "Gallery", bundle: bundle)
         
@@ -32,9 +34,20 @@ public class GalleryHelper {
 
 extension String {
     /// Localizes the string using the Gallery table with bundle fallback logic.
-    /// - Parameter bundle: The bundle to check first.
-    /// - Returns: A localized string.
-    public func galleryLocalized(bundle: Bundle) -> String {
-        GalleryHelper.stringFrom(self, bundle: bundle)
+    ///
+    /// The method first checks the provided `bundle` (typically the app's main bundle) to allow
+    /// the host application to override package-default strings. If not found, it falls back
+    /// to the internal `Bundle.module`.
+    ///
+    /// - Parameters:
+    ///   - bundle: The primary bundle to check for overrides.
+    ///   - defaultValue: An optional string to return if no localization is found for the key.
+    /// - Returns: The localized string. Defaults to the key itself if no translation or `defaultValue` is found.
+    public func galleryLocalized(bundle: Bundle, defaultValue: String? = nil) -> String {
+        let result = GalleryHelper.stringFrom(self, bundle: bundle)
+        if result == self, let defaultValue {
+            return defaultValue
+        }
+        return result
     }
 }
