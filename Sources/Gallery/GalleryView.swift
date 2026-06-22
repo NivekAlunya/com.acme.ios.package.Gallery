@@ -7,6 +7,9 @@
 
 import SwiftUI
 import UIKit
+import os
+
+private let logger = Logger(subsystem: "com.acme.ios.package.Gallery", category: "GalleryView")
 
 extension EnvironmentValues {
     @Entry public var bundle: Bundle = Bundle.module
@@ -14,6 +17,7 @@ extension EnvironmentValues {
 
 public struct GalleryView: View {
     @Environment(\.bundle) private var envBundle
+    private let bundle: Bundle
     @State var model: GalleryModel
     @Binding var selectedPhotos: [PhotoItem]
     
@@ -53,14 +57,10 @@ public struct GalleryView: View {
                 .environment(\.bundle, bundle)
                 .onChange(of: model.photos) { newPhotos in
                     selectedPhotos = newPhotos.filter { $0.isSelected }
-                    #if DEBUG
-                    print("GalleryView: selectedPhotos count: \(selectedPhotos.count)")
-                    #endif
+                    logger.debug("selectedPhotos count: \(selectedPhotos.count)")
                 }
                 .onChange(of: selectedPhotos) { newPhotos in
-                    #if DEBUG
-                    print("GalleryView: selectedPhotos changed externally, count: \(newPhotos.count)")
-                    #endif
+                    logger.debug("selectedPhotos changed externally, count: \(newPhotos.count)")
                     model.syncPhotos(selectedPhotos: newPhotos)
                 }
 

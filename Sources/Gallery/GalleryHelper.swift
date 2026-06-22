@@ -8,7 +8,7 @@
 import Foundation
 
 /// A utility class providing helper methods for Gallery-related tasks.
-public class GalleryHelper {
+class GalleryHelper {
 
     /// A helper function to create a localized string from a string key.
     ///
@@ -19,7 +19,7 @@ public class GalleryHelper {
     ///   - string: The key for the localized string.
     ///   - bundle: The primary bundle to search for the translation.
     /// - Returns: The localized string if found, otherwise the key itself.
-    public static func stringFrom(_ string: String, bundle: Bundle) -> String {
+    static func stringFrom(_ string: String, bundle: Bundle) -> String {
         let requestedStr = String(localized: String.LocalizationValue(string), table: "Gallery", bundle: bundle)
         
         // If the translation matches the key and we are not already looking at the module bundle,
@@ -43,7 +43,7 @@ extension String {
     ///   - bundle: The primary bundle to check for overrides.
     ///   - defaultValue: An optional string to return if no localization is found for the key.
     /// - Returns: The localized string. Defaults to the key itself if no translation or `defaultValue` is found.
-    public func galleryLocalized(bundle: Bundle, defaultValue: String? = nil) -> String {
+    func galleryLocalized(bundle: Bundle, defaultValue: String? = nil) -> String {
         let result = GalleryHelper.stringFrom(self, bundle: bundle)
         if result == self, let defaultValue {
             return defaultValue
