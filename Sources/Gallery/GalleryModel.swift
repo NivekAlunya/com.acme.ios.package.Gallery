@@ -8,6 +8,9 @@
 import Foundation
 import SwiftUI
 @preconcurrency import Photos
+import os
+
+private let logger = Logger(subsystem: "com.acme.ios.package.Gallery", category: "GalleryModel")
 
 public struct PhotoItem: Identifiable, Hashable {
     public let id: String
@@ -63,7 +66,7 @@ class GalleryModel {
     }
     
     func loadPhotos() async {
-        print("\(type(of: self))-\(#function)")
+        logger.debug("loadPhotos()")
         do {
             
             let assets = try await gallery.getPhotos()
@@ -81,7 +84,7 @@ class GalleryModel {
                     )
                     loadedPhotos.append(photoItem)
                 } catch {
-                    print("Error loading thumbnail for asset \(asset.localIdentifier): \(error)")
+                    logger.error("Error loading thumbnail for asset \(asset.localIdentifier): \(error.localizedDescription)")
                     continue
                 }
                 
@@ -99,7 +102,7 @@ class GalleryModel {
             }
         } catch {
             state = .error(error)
-            print("Error loading photos: \(error)")
+            logger.error("Error loading photos: \(error.localizedDescription)")
         }
     }
     
@@ -112,14 +115,14 @@ class GalleryModel {
             photos[index].isLoading = false
             photos[index].isSelected = isSelected
         } catch {
-            print("Error updating photo selection at index \(index): \(error)")
+            logger.error("Error updating photo selection at index \(index): \(error.localizedDescription)")
         }
-        print("Photo at index \(index) is now \(photos[index].isSelected ? "selected" : "deselected")")
+        logger.debug("Photo at index \(index) is now \(self.photos[index].isSelected ? "selected" : "deselected")")
     }
     
     func showImageAtIndex(_ index: Int) async {
         guard !photos.isEmpty else {
-            print("No photos available to display.")
+            logger.warning("No photos available to display.")
             return
         }
         currentIndex = switch index {
@@ -143,7 +146,7 @@ class GalleryModel {
                     self?.photo?.isLoading = true
                 }
             } catch {
-                print("Task was cancelled")
+                logger.debug("Task was cancelled")
             }
         }
         
@@ -154,7 +157,7 @@ class GalleryModel {
             state = .displaying(isLoading: false)
             photo?.isLoading = false
         } catch {
-            print("Error loading full image: \(error)")
+            logger.error("Error loading full image: \(error.localizedDescription)")
         }
     
     }

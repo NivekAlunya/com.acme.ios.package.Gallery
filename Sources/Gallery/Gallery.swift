@@ -34,6 +34,7 @@ public actor Gallery: NSObject {
     private var onLibraryChange: (() -> Void)?
     private var cachedAssets: [PHAsset] = []
     private let targetSize = CGSize(width: 200, height: 200)
+    
     private override init() {
         super.init()
         PHPhotoLibrary.shared().register(self)
