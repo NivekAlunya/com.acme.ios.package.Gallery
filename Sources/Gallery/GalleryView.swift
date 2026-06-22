@@ -9,11 +9,11 @@ import SwiftUI
 import UIKit
 
 extension EnvironmentValues {
-    @Entry var bundle: Bundle = Bundle.module
+    @Entry public var bundle: Bundle = Bundle.module
 }
 
 public struct GalleryView: View {
-    private let bundle: Bundle
+    @Environment(\.bundle) private var envBundle
     @State var model: GalleryModel
     @Binding var selectedPhotos: [PhotoItem]
     
@@ -31,7 +31,7 @@ public struct GalleryView: View {
     }
     
     public var body: some View {
-                ScrollView {
+        ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
                         ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
                             ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: { isSelected in
@@ -53,23 +53,27 @@ public struct GalleryView: View {
                 .environment(\.bundle, bundle)
                 .onChange(of: model.photos) { newPhotos in
                     selectedPhotos = newPhotos.filter { $0.isSelected }
+                    #if DEBUG
                     print("GalleryView: selectedPhotos count: \(selectedPhotos.count)")
+                    #endif
                 }
                 .onChange(of: selectedPhotos) { newPhotos in
+                    #if DEBUG
                     print("GalleryView: selectedPhotos changed externally, count: \(newPhotos.count)")
+                    #endif
                     model.syncPhotos(selectedPhotos: newPhotos)
                 }
 
 
                 switch model.state {
                 case .loading:
-                    ProgressView("Loading Photos...")
+                    ProgressView("gallery_loading_photos".galleryLocalized(bundle: bundle))
                         .task {
                             await model.loadPhotos()
                         }
 
                 case .error(let error):
-                    Text("Error loading photos: \(error.localizedDescription)")
+                    Text(String(format: "gallery_error_loading".galleryLocalized(bundle: bundle), error.localizedDescription))
                         .foregroundColor(.red)
                 case .displaying:
                     if case let .displaying(isLoading) = model.state {
@@ -78,7 +82,7 @@ public struct GalleryView: View {
                             .ignoresSafeArea()
                             .overlay {
                                 if isLoading {
-                                    ProgressView("Loading Image...")
+                                    ProgressView("gallery_loading_image".galleryLocalized(bundle: bundle))
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                         .scaleEffect(1.5)
                                 }
