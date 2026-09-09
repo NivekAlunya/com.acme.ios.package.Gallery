@@ -1,16 +1,33 @@
+//
+//  MockGallery.swift
+//  GalleryTests
+//
+//  Created by Kevin LAUNAY on 03/09/2025.
+//
+
 import Foundation
 import Photos
 import UIKit
 @testable import Gallery
 
 actor MockGallery: GalleryProtocol {
-    var photosToReturn: [PHAsset] = []
-    var errorToThrow: Error?
-    var thumbnailToReturn: UIImage?
-    var onLibraryChangeCallback: (() -> Void)?
+    private var photosToReturn: [PHAsset] = []
+    private var errorToThrow: Error?
+
+    init() {}
+
+    func setPhotos(_ photos: [PHAsset]) {
+        self.photosToReturn = photos
+    }
+
+    func setError(_ error: Error?) {
+        self.errorToThrow = error
+    }
 
     func insertPhoto(data: Data) async throws {
-        // Not needed for this test
+        if let error = errorToThrow {
+            throw error
+        }
     }
 
     func getPhotos() async throws -> [PHAsset] {
@@ -20,15 +37,11 @@ actor MockGallery: GalleryProtocol {
         return photosToReturn
     }
 
-    nonisolated func loadImage(from asset: PHAsset, callback: ((UIImage?) -> Void)?) {
-        // Not needed for this test
+    nonisolated func loadImage(from asset: PHAsset) async throws -> UIImage {
+        return UIImage()
     }
 
-    nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) async -> UIImage? {
-        return thumbnailToReturn
-    }
-
-    func setOnLibraryChange(_ onChange: (() -> Void)?) {
-        self.onLibraryChangeCallback = onChange
+    nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) async throws -> UIImage {
+        return UIImage()
     }
 }

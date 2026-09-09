@@ -14,7 +14,7 @@ struct ImageViewer: View {
     @State private var isDragging = false
     var body: some View {
         ZStack {
-            if let image = model.photo?.image {
+            if let image = model.photo?.image ?? model.photo?.thumb {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)

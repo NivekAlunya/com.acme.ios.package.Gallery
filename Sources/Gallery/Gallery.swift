@@ -1,18 +1,29 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
+//
+//  Gallery.swift
+//  Gallery
+//
+//  Created by Kevin LAUNAY on 03/09/2025.
+//
 
 @preconcurrency import Photos
 import UIKit
 
+/// Protocol defining the interface for gallery photo storage and retrieval.
 public protocol GalleryProtocol: Actor {
+    /// Inserts a photo into the photo library from encoded data.
     func insertPhoto(data: Data) async throws
+    /// Fetches all image assets from the photo library.
     func getPhotos() async throws -> [PHAsset]
+    /// Loads a full image asynchronously for the specified asset.
     nonisolated func loadImage(from asset: PHAsset) async throws -> UIImage
+    /// Loads a thumbnail asynchronously for the specified asset.
     nonisolated func loadThumbnail(from asset: PHAsset, targetSize: CGSize) async throws -> UIImage
 }
 
+/// An actor managing photo library interactions, asset querying, and asynchronous image retrieval.
 public actor Gallery: NSObject {
-    enum State {
+    /// Authorization status of photo library access.
+    public enum State: Sendable {
         case unauthorized
         case authorized
         case limited
@@ -20,7 +31,8 @@ public actor Gallery: NSObject {
         case notDetermined
     }
     
-    enum GalleryError: Error {
+    /// Errors that can occur during photo library operations.
+    public enum GalleryError: Error, Sendable {
         case permissionDenied
         case insertionFailed
         case loadingThumbnailFailed
@@ -28,7 +40,7 @@ public actor Gallery: NSObject {
     }
     
     public static let shared = Gallery()
-    private(set) var state: State = .unknown
+    public private(set) var state: State = .unknown
     private let imageManager = PHImageManager.default()
     private let cachingManager = PHCachingImageManager()
     private var onLibraryChange: (() -> Void)?
@@ -39,15 +51,13 @@ public actor Gallery: NSObject {
         super.init()
         PHPhotoLibrary.shared().register(self)
         cachingManager.startCachingImages(for: cachedAssets, targetSize: targetSize, contentMode: .aspectFill, options: nil)
-    
     }
     
     deinit {
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
     
-    func savePhoto(data : Data) async throws {
-        
+    func savePhoto(data: Data) async throws {
         try await PHPhotoLibrary.shared().performChanges {
             let options = PHAssetResourceCreationOptions()
             let creationRequest = PHAssetCreationRequest.forAsset()
@@ -55,33 +65,31 @@ public actor Gallery: NSObject {
         }
     }
     
-    func askForPermission() async -> Bool {
-        let authorized = PHPhotoLibrary.authorizationStatus(for: .addOnly) == .authorized
-        guard !authorized else {
-            state = .authorized
+    /// Requests user authorization to read and write to the photo library.
+    /// - Returns: `true` if authorized or access is limited; `false` otherwise.
+    public func askForPermission() async -> Bool {
+        let currentStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if currentStatus == .authorized || currentStatus == .limited {
+            self.state = (currentStatus == .authorized) ? .authorized : .limited
             return true
         }
-        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         switch status {
         case .authorized:
             self.state = .authorized
-            print("Access granted to photo library")
+            return true
+        case .limited:
+            self.state = .limited
             return true
         case .denied, .restricted:
             self.state = .unauthorized
-            print("Access denied or restricted")
             return false
         case .notDetermined:
             self.state = .notDetermined
-            print("Permission not determined")
             return false
-        case .limited:
-            self.state = .limited
-            print("Limited access granted")
-            return true
         @unknown default:
             self.state = .unknown
-            print("Unknown status")
             return false
         }
     }
@@ -89,6 +97,8 @@ public actor Gallery: NSObject {
 
 extension Gallery: GalleryProtocol {
     
+    /// Fetches all image assets from the user's photo library, sorted by creation date descending.
+    /// - Throws: `GalleryError.permissionDenied` if user access was not granted.
     public func getPhotos() async throws -> [PHAsset] {
         guard await askForPermission() else {
             throw GalleryError.permissionDenied
@@ -105,8 +115,9 @@ extension Gallery: GalleryProtocol {
         return assets
     }
     
+    /// Inserts raw image data into the photo library.
+    /// - Parameter data: Encoded image data (e.g. JPEG or PNG).
     public func insertPhoto(data: Data) async throws {
-        // Code to insert photo into the gallery
         guard await askForPermission() else {
             throw GalleryError.permissionDenied
         }
@@ -118,56 +129,57 @@ extension Gallery: GalleryProtocol {
         }
     }
 
+    /// Loads a thumbnail for the specified asset.
+    /// - Parameters:
+    ///   - asset: The asset to generate a thumbnail for.
+    ///   - targetSize: Target thumbnail dimensions.
+    /// - Returns: The loaded thumbnail image.
     nonisolated public func loadThumbnail(from asset: PHAsset, targetSize: CGSize = CGSize(width: 200, height: 200)) async throws -> UIImage {
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            Task {
-                let options = PHImageRequestOptions()
-                options.deliveryMode = .highQualityFormat
-                options.isSynchronous = true
-                options.isNetworkAccessAllowed = true
-                print("loadThumbnail from asset \(asset.localIdentifier)")
-                imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, info in
-                    print("thumbnail for \(asset.localIdentifier) \(image != nil)")
-                    guard let image else  {
-                        continuation.resume(throwing: GalleryError.loadingThumbnailFailed)
-                        return
-                    }
-                    continuation.resume(returning: image)
-                    print("loadThumbnail from asset \(asset.localIdentifier) ended function")
-                }
+        try await Task.detached(priority: .userInitiated) {
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isSynchronous = true
+            options.isNetworkAccessAllowed = true
+
+            var resultImage: UIImage?
+            self.imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
+                resultImage = image
             }
-        }
+
+            guard let resultImage else {
+                throw GalleryError.loadingThumbnailFailed
+            }
+            return resultImage
+        }.value
     }
     
+    /// Asynchronously fetches the full image data for the specified asset.
+    /// - Parameter asset: The photo library asset.
+    /// - Returns: The decoded `UIImage`.
     nonisolated public func loadImage(from asset: PHAsset) async throws -> UIImage {
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            
+        try await Task.detached(priority: .userInitiated) {
             let options = PHImageRequestOptions()
-            options.isSynchronous = false
             options.deliveryMode = .highQualityFormat
+            options.isSynchronous = true
             options.isNetworkAccessAllowed = true
-            var uiImage: UIImage?
-            print("loadImage from asset \(asset.localIdentifier)")
-            imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-                    guard let data
-                    , let uiImage = UIImage(data: data) else  {
-                        continuation.resume(throwing: GalleryError.loadingImageFailed)
-                        return
-                    }
-                    print("data for \(asset.localIdentifier) \(data != nil)")
-                    continuation.resume(returning: uiImage)
-                    print("loadImage from asset \(asset.localIdentifier)")
+
+            var resultImage: UIImage?
+            self.imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                if let data {
+                    resultImage = UIImage(data: data)
+                }
             }
-        }
+
+            guard let resultImage else {
+                throw GalleryError.loadingImageFailed
+            }
+            return resultImage
+        }.value
     }
-        
 }
 
 extension Gallery: PHPhotoLibraryChangeObserver {
     nonisolated public func photoLibraryDidChange(_ changeInstance: PHChange) {
-        print("Photo library did change")
+        // Observers can be notified here when the library changes
     }
-
 }
