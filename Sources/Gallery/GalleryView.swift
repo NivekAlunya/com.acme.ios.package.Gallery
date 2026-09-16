@@ -28,6 +28,19 @@ public struct GalleryView: View {
         self.model = GalleryModel()
     }
 
+    public init(bundle: Bundle? = nil, selectedPhotoIDs: Binding<Set<String>>) {
+        let binding = Binding<[PhotoItem]>(
+            get: { [] },
+            set: { newPhotos in
+                selectedPhotoIDs.wrappedValue = Set(newPhotos.map { $0.id })
+            }
+        )
+        self._selectedPhotos = binding
+        let resolvedBundle = bundle ?? Bundle.module
+        self.bundle = resolvedBundle
+        self.model = GalleryModel()
+    }
+
     init(model: GalleryModel) {
         self.model = model
         self.bundle = .module
@@ -35,63 +48,68 @@ public struct GalleryView: View {
     }
     
     public var body: some View {
-        ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100,maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
-                        ForEach(Array(model.photos.enumerated()), id: \.element ) { index, photo in
-                            ThumbnailView(isSelected: photo.isSelected, isLoading: photo.isLoading ,photo: photo, onTap: { isSelected in
-                                Task {
-                                    await model.selectPhotoAtIndex(index, selected: isSelected)
-                                }
-                                
-                            }, onLongPress: {
-                                Task {
-                                    await model.showImageAtIndex(index)
-                                }
-                            })
-                            .animation(.default, value: model.photos[index].isSelected)
-                            .transition(.opacity.combined(with: .scale))
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .environment(\.bundle, bundle)
-                .onChange(of: model.photos) { newPhotos in
-                    selectedPhotos = newPhotos.filter { $0.isSelected }
-                    logger.debug("selectedPhotos count: \(selectedPhotos.count)")
-                }
-                .onChange(of: selectedPhotos) { newPhotos in
-                    logger.debug("selectedPhotos changed externally, count: \(newPhotos.count)")
-                    model.syncPhotos(selectedPhotos: newPhotos)
-                }
-
-
-                switch model.state {
-                case .loading:
-                    ProgressView("gallery_loading_photos".galleryLocalized(bundle: bundle))
-                        .task {
-                            await model.loadPhotos()
-                        }
-
-                case .error(let error):
-                    Text(String(format: "gallery_error_loading".galleryLocalized(bundle: bundle), error.localizedDescription))
-                        .foregroundColor(.red)
-                case .displaying:
-                    if case let .displaying(isLoading) = model.state {
-                        ImageViewer(model: model)
-                            .transition(.opacity.combined(with: .scale))
-                            .ignoresSafeArea()
-                            .overlay {
-                                if isLoading {
-                                    ProgressView("gallery_loading_image".galleryLocalized(bundle: bundle))
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        .scaleEffect(1.5)
-                                }
+        ZStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 200), spacing: 8, alignment: .top)], spacing: 8) {
+                    ForEach(Array(model.photos.enumerated()), id: \.element.id) { index, photo in
+                        ThumbnailView(
+                            isSelected: photo.isSelected,
+                            isLoading: photo.isLoading,
+                            photo: photo,
+                            onTap: { isSelected in
+                                model.selectPhotoAtIndex(index, selected: isSelected)
+                            },
+                            onLongPress: {
+                                model.showImageAtIndex(index)
                             }
-                            
+                        )
+                        .animation(.default, value: model.photos[index].isSelected)
+                        .transition(.opacity.combined(with: .scale))
                     }
-                case .browsing:
-                    EmptyView()
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.bundle, bundle)
+            .onChange(of: model.photos) { _, newPhotos in
+                let newSelected = newPhotos.filter { $0.isSelected }
+                if selectedPhotos != newSelected {
+                    selectedPhotos = newSelected
+                    logger.debug("selectedPhotos count: \(newSelected.count)")
+                }
+            }
+            .onChange(of: selectedPhotos) { _, newPhotos in
+                logger.debug("selectedPhotos changed externally, count: \(newPhotos.count)")
+                model.syncPhotos(selectedPhotos: newPhotos)
+            }
+            switch model.state {
+            case .loading:
+                ProgressView("gallery_loading_photos".galleryLocalized(bundle: bundle))
+                    .task {
+                        await model.loadPhotos()
+                    }
+                
+            case .error(let error):
+                Text(String(format: "gallery_error_loading".galleryLocalized(bundle: bundle), error.localizedDescription))
+                    .foregroundColor(.red)
+            case .displaying:
+                if case let .displaying(isLoading) = model.state {
+                    ImageViewer(model: model)
+                        .transition(.opacity.combined(with: .scale))
+                        .ignoresSafeArea()
+                        .overlay {
+                            if isLoading {
+                                ProgressView("gallery_loading_image".galleryLocalized(bundle: bundle))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(1.5)
+                            }
+                        }
+                    
+                }
+            case .browsing:
+                EmptyView()
+            }
+            
+        }
     }
 }
 
