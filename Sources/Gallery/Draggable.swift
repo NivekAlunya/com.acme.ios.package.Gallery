@@ -21,7 +21,6 @@ struct Draggable: ViewModifier {
             .gesture(
                 DragGesture(minimumDistance: 20)
                     .onChanged { gesture in
-                        print("Drag changed: \(gesture.translation.width)")
                         withAnimation {
                             offset = gesture.translation.width
                             opacity = (1.0 - min(abs(offset) / (2 * threshold), 0.5))

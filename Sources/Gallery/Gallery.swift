@@ -32,11 +32,24 @@ public actor Gallery: NSObject {
     }
     
     /// Errors that can occur during photo library operations.
-    public enum GalleryError: Error, Sendable {
+    public enum GalleryError: Error, Sendable, Equatable {
         case permissionDenied
-        case insertionFailed
+        case insertionFailed(String)
         case loadingThumbnailFailed
         case loadingImageFailed
+
+        public static func == (lhs: GalleryError, rhs: GalleryError) -> Bool {
+            switch (lhs, rhs) {
+            case (.permissionDenied, .permissionDenied),
+                 (.loadingThumbnailFailed, .loadingThumbnailFailed),
+                 (.loadingImageFailed, .loadingImageFailed):
+                return true
+            case (.insertionFailed(let a), .insertionFailed(let b)):
+                return a == b
+            default:
+                return false
+            }
+        }
     }
     
     public static let shared = Gallery()
@@ -65,33 +78,42 @@ public actor Gallery: NSObject {
         }
     }
     
-    /// Requests user authorization to read and write to the photo library.
-    /// - Returns: `true` if authorized or access is limited; `false` otherwise.
-    public func askForPermission() async -> Bool {
+    /// Checks or requests user authorization for photo library access, returning the granular `State`.
+    @discardableResult
+    public func checkOrRequestPermission() async -> State {
         let currentStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if currentStatus == .authorized || currentStatus == .limited {
-            self.state = (currentStatus == .authorized) ? .authorized : .limited
-            return true
+            let newState: State = (currentStatus == .authorized) ? .authorized : .limited
+            self.state = newState
+            return newState
         }
         
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         switch status {
         case .authorized:
             self.state = .authorized
-            return true
+            return .authorized
         case .limited:
             self.state = .limited
-            return true
+            return .limited
         case .denied, .restricted:
             self.state = .unauthorized
-            return false
+            return .unauthorized
         case .notDetermined:
             self.state = .notDetermined
-            return false
+            return .notDetermined
         @unknown default:
             self.state = .unknown
-            return false
+            return .unknown
         }
+    }
+
+    /// Requests user authorization to read and write to the photo library.
+    /// - Returns: `true` if authorized or access is limited; `false` otherwise.
+    @discardableResult
+    public func askForPermission() async -> Bool {
+        let status = await checkOrRequestPermission()
+        return status == .authorized || status == .limited
     }
 }
 
@@ -125,56 +147,72 @@ extension Gallery: GalleryProtocol {
         do {
             try await savePhoto(data: data)
         } catch {
-            throw GalleryError.insertionFailed
+            throw GalleryError.insertionFailed(error.localizedDescription)
         }
     }
 
-    /// Loads a thumbnail for the specified asset.
+    /// Loads a thumbnail for the specified asset asynchronously without blocking the cooperative thread pool.
     /// - Parameters:
     ///   - asset: The asset to generate a thumbnail for.
     ///   - targetSize: Target thumbnail dimensions.
     /// - Returns: The loaded thumbnail image.
     nonisolated public func loadThumbnail(from asset: PHAsset, targetSize: CGSize = CGSize(width: 200, height: 200)) async throws -> UIImage {
-        try await Task.detached(priority: .userInitiated) {
+        try await withCheckedThrowingContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
-            options.isSynchronous = true
+            options.isSynchronous = false
             options.isNetworkAccessAllowed = true
 
-            var resultImage: UIImage?
-            self.imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
-                resultImage = image
-            }
+            var hasResumed = false
+            self.imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, info in
+                if let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool, isDegraded {
+                    return // Ignore low-res preliminary callback
+                }
+                guard !hasResumed else { return }
+                hasResumed = true
 
-            guard let resultImage else {
-                throw GalleryError.loadingThumbnailFailed
+                if let error = info?[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                } else if let isCancelled = info?[PHImageCancelledKey] as? Bool, isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if let image {
+                    continuation.resume(returning: image)
+                } else {
+                    continuation.resume(throwing: GalleryError.loadingThumbnailFailed)
+                }
             }
-            return resultImage
-        }.value
+        }
     }
     
-    /// Asynchronously fetches the full image data for the specified asset.
+    /// Asynchronously fetches the full image data for the specified asset without blocking cooperative threads.
     /// - Parameter asset: The photo library asset.
     /// - Returns: The decoded `UIImage`.
     nonisolated public func loadImage(from asset: PHAsset) async throws -> UIImage {
-        try await Task.detached(priority: .userInitiated) {
+        try await withCheckedThrowingContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
-            options.isSynchronous = true
+            options.isSynchronous = false
             options.isNetworkAccessAllowed = true
 
-            var resultImage: UIImage?
-            self.imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-                if let data {
-                    resultImage = UIImage(data: data)
+            var hasResumed = false
+            self.imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                if let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool, isDegraded {
+                    return // Ignore low-res preliminary callback
+                }
+                guard !hasResumed else { return }
+                hasResumed = true
+
+                if let error = info?[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                } else if let isCancelled = info?[PHImageCancelledKey] as? Bool, isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if let data, let image = UIImage(data: data) {
+                    continuation.resume(returning: image)
+                } else {
+                    continuation.resume(throwing: GalleryError.loadingImageFailed)
                 }
             }
-
-            guard let resultImage else {
-                throw GalleryError.loadingImageFailed
-            }
-            return resultImage
-        }.value
+        }
     }
 }
 

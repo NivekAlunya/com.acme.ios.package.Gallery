@@ -8,6 +8,7 @@
 import Testing
 import Foundation
 import SwiftUI
+import Photos
 @testable import Gallery
 
 @Suite("GalleryModel Tests")
@@ -55,5 +56,33 @@ struct GalleryModelTests {
         await model.hideImage()
         let photo = await model.photo
         #expect(photo == nil)
+    }
+
+    @Test("PhotoItem loadFullImage returns cached image if present")
+    func photoItemLoadFullImageCached() async throws {
+        let expectedImage = UIImage()
+        let item = PhotoItem(
+            id: "test-1",
+            image: expectedImage,
+            thumb: UIImage(),
+            asset: PHAsset()
+        )
+        let loaded = try await item.loadFullImage()
+        #expect(loaded == expectedImage)
+    }
+
+    @Test("Collection loadFullImages loads all images preserving order")
+    func collectionLoadFullImages() async {
+        let mockGallery = MockGallery()
+        let img1 = UIImage()
+        let img2 = UIImage()
+        let items = [
+            PhotoItem(id: "1", image: img1, thumb: UIImage(), asset: PHAsset()),
+            PhotoItem(id: "2", image: nil, thumb: img2, asset: PHAsset())
+        ]
+
+        let results = await items.loadFullImages(gallery: mockGallery)
+        #expect(results.count == 2)
+        #expect(results.first == img1)
     }
 }

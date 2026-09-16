@@ -65,6 +65,7 @@ final class GalleryModel {
     
     private let gallery: any GalleryProtocol
     private var currentIndex: Int = 0
+    private var activeImageTask: Task<Void, Never>?
     
     private(set) var photos: [PhotoItem] = []
     private(set) var photo: PhotoItem? = nil
@@ -81,6 +82,8 @@ final class GalleryModel {
     /// - Parameter selectedPhotos: Selected photo items to match against.
     func syncPhotos(selectedPhotos: [PhotoItem]) {
         let ids = Set(selectedPhotos.map { $0.id })
+        let currentSelectedIDs = Set(photos.filter { $0.isSelected }.map { $0.id })
+        guard ids != currentSelectedIDs else { return }
         photos = photos.map { photo in
             var mutablePhoto = photo
             mutablePhoto.isSelected = ids.contains(photo.id)
@@ -128,28 +131,19 @@ final class GalleryModel {
         }
     }
     
-    /// Selects or deselects the photo at the specified index, loading its full image if needed.
+    /// Selects or deselects the photo at the specified index without loading the full-resolution asset.
     /// - Parameters:
     ///   - index: The index of the photo in the collection.
     ///   - isSelected: The target selection state.
-    func selectPhotoAtIndex(_ index: Int, selected isSelected: Bool) async {
+    func selectPhotoAtIndex(_ index: Int, selected isSelected: Bool) {
         guard photos.indices.contains(index) else { return }
-        do {
-            if photos[index].image == nil {
-                photos[index].isLoading = true
-                photos[index].image = try await gallery.loadImage(from: photos[index].asset)
-            }
-            photos[index].isLoading = false
-            photos[index].isSelected = isSelected
-        } catch {
-            logger.error("Error updating photo selection at index \(index): \(error.localizedDescription)")
-        }
+        photos[index].isSelected = isSelected
         logger.debug("Photo at index \(index) is now \(self.photos[index].isSelected ? "selected" : "deselected")")
     }
     
-    /// Prepares and presents the photo at the given index, wrapping safely around collection bounds.
+    /// Prepares and presents the photo at the given index, cancelling any prior in-flight load task.
     /// - Parameter index: Target photo index. Wrap-around navigation is supported.
-    func showImageAtIndex(_ index: Int) async {
+    func showImageAtIndex(_ index: Int) {
         guard !photos.isEmpty else {
             logger.warning("No photos available to display.")
             return
@@ -159,56 +153,57 @@ final class GalleryModel {
         // The formula `(index % count + count) % count` ensures negative values wrap backwards
         // (e.g. -1 -> count - 1) and out-of-bounds values wrap forward (e.g. count -> 0).
         currentIndex = (index % photos.count + photos.count) % photos.count
-
         photo = self.photos[currentIndex]
-        let delayedLoader = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                try Task.checkCancellation()
-                
-                await MainActor.run {
-                    self?.state = .displaying(isLoading: true)
-                    self?.photo?.isLoading = true
-                }
-            } catch {
-                logger.debug("Task was cancelled")
-            }
-        }
-        
-        guard let asset = photo?.asset else {
-            delayedLoader.cancel()
-            return
-        }
 
-        do {
-            let image = try await gallery.loadImage(from: asset)
-            delayedLoader.cancel()
-            photo?.image = image
-            state = .displaying(isLoading: false)
-            photo?.isLoading = false
-        } catch {
-            delayedLoader.cancel()
-            logger.error("Error loading full image: \(error.localizedDescription)")
+        activeImageTask?.cancel()
+        let targetIndex = currentIndex
+        activeImageTask = Task { [weak self] in
+            guard let self else { return }
+            self.state = .displaying(isLoading: true)
+            self.photo?.isLoading = true
+            do {
+                guard let asset = self.photo?.asset else { return }
+                let image = try await self.gallery.loadImage(from: asset)
+                try Task.checkCancellation()
+
+                if self.currentIndex == targetIndex {
+                    self.photo?.image = image
+                    self.photo?.isLoading = false
+                    self.state = .displaying(isLoading: false)
+                }
+            } catch is CancellationError {
+                // Newer navigation cancelled this task
+            } catch {
+                logger.error("Error loading full image: \(error.localizedDescription)")
+                if self.currentIndex == targetIndex {
+                    self.state = .displaying(isLoading: false)
+                    self.photo?.isLoading = false
+                }
+            }
         }
     }
 
-    /// Hides the current fullscreen photo.
+    /// Hides the current fullscreen photo and cancels any in-flight image load.
     func hideImage() {
+        activeImageTask?.cancel()
+        activeImageTask = nil
         photo = nil
     }
         
     /// Navigates to the next image in the collection, wrapping to the start if at the end.
-    func showNextImage() async {
-        await showImageAtIndex(currentIndex + 1)
+    func showNextImage() {
+        showImageAtIndex(currentIndex + 1)
     }
     
     /// Navigates to the previous image in the collection, wrapping to the end if at the start.
-    func showPreviousImage() async {
-        await showImageAtIndex(currentIndex - 1)
+    func showPreviousImage() {
+        showImageAtIndex(currentIndex - 1)
     }
     
     /// Returns the gallery state to browsing mode.
     func showGallery() {
+        activeImageTask?.cancel()
+        activeImageTask = nil
         state = .browsing
         photo = nil
     }

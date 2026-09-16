@@ -63,7 +63,6 @@ struct ImageViewer: View {
             return proxy.size
         } action: { newSize in
             viewSize = newSize
-            print("ImageViewer newSize: \(newSize)")
         }
         .onTapGesture {
             withAnimation {
