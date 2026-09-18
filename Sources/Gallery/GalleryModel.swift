@@ -81,13 +81,11 @@ final class GalleryModel {
     /// Synchronizes selection status with an external list of selected photos.
     /// - Parameter selectedPhotos: Selected photo items to match against.
     func syncPhotos(selectedPhotos: [PhotoItem]) {
-        let ids = Set(selectedPhotos.map { $0.id })
-        let currentSelectedIDs = Set(photos.filter { $0.isSelected }.map { $0.id })
+        let ids = Set(selectedPhotos.map(\.id))
+        let currentSelectedIDs = Set(photos.filter(\.isSelected).map(\.id))
         guard ids != currentSelectedIDs else { return }
-        photos = photos.map { photo in
-            var mutablePhoto = photo
-            mutablePhoto.isSelected = ids.contains(photo.id)
-            return mutablePhoto
+        for index in photos.indices {
+            photos[index].isSelected = ids.contains(photos[index].id)
         }
     }
     
